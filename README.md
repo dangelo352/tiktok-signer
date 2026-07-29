@@ -1,3 +1,7 @@
+> [!caution]
+> **Maintenance Status**
+> This project is not actively maintained, and there are currently no plans for future updates. It remains available for use, but new features and bug fixes are not planned.
+
 # TikTok Signer
 
 Python library for generating TikTok Android API authentication signatures. Implements required encryption algorithms (Argus, Gorgon, Ladon, TTEncrypt) for authenticating requests to TikTok's private API.
