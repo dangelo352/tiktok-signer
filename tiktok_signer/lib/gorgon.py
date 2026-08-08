@@ -1,37 +1,39 @@
 """Gorgon encryption module for X-Gorgon header generation."""
-from typing import Dict, Optional, Union
-from urllib.parse import urlencode
-from copy import deepcopy
 import hashlib
 import time
+from copy import deepcopy
+from functools import lru_cache
+from typing import Dict, List, Optional, Union
+from urllib.parse import urlencode
 
 
 class Gorgon:
     """Gorgon encryption class for generating X-Gorgon and X-Khronos headers."""
-    
+
     LENGTH: int = 20
-    HEX_STR: list = [30, 64, 224, 217, 147, 69, 0, 180]
-    
+    HEX_STR: List[int] = [30, 64, 224, 217, 147, 69, 0, 180]
+
     @staticmethod
-    def _encryption() -> list:
-        """Generate encryption lookup table."""
-        tmp = ""
+    @lru_cache(maxsize=1)
+    def _encryption() -> List[int]:
+        """Generate the static encryption lookup table (cached)."""
+        last: Optional[int] = None
         hex_zu = list(range(256))
         for i in range(256):
-            A = 0 if i == 0 else (tmp if tmp else hex_zu[i - 1])
+            A = 0 if i == 0 else (last if last else hex_zu[i - 1])
             B = Gorgon.HEX_STR[i % 8]
-            if A == 85 and i != 1 and tmp != 85:
+            if A == 85 and i != 1 and last != 85:
                 A = 0
             C = (A + i + B) % 256
-            tmp = C if C < i else ""
+            last = C if C < i else None
             D = hex_zu[C]
             hex_zu[i] = D
         return hex_zu
-    
+
     @staticmethod
-    def _initialize(input_data: list, hex_zu: list) -> list:
+    def _initialize(input_data: List[int], hex_zu: List[int]) -> List[int]:
         """Initialize input data with encryption table."""
-        tmp_add = []
+        tmp_add: List[int] = []
         tmp_hex = deepcopy(hex_zu)
         for i in range(Gorgon.LENGTH):
             A = input_data[i]
@@ -45,21 +47,21 @@ class Gorgon:
             G = A ^ F
             input_data[i] = G
         return input_data
-    
+
     @staticmethod
     def _reverse(num: int) -> int:
         """Reverse nibbles in byte."""
         tmp_string = hex(num)[2:].zfill(2)
         return int(tmp_string[1:] + tmp_string[:1], 16)
-    
+
     @staticmethod
     def _rbit(num: int) -> int:
         """Reverse bits in byte."""
         tmp_string = bin(num)[2:].zfill(8)
         return int("".join(reversed(tmp_string)), 2)
-    
+
     @staticmethod
-    def _handle(input_data: list) -> list:
+    def _handle(input_data: List[int]) -> List[int]:
         """Apply final transformation to input data."""
         for i in range(Gorgon.LENGTH):
             A = input_data[i]
@@ -74,14 +76,14 @@ class Gorgon:
             H = int(hex(G)[-2:], 16)
             input_data[i] = H
         return input_data
-    
+
     @staticmethod
     def _hex2string(num: int) -> str:
         """Convert number to 2-digit hex string."""
         return hex(num)[2:].zfill(2)
-    
+
     @staticmethod
-    def _calculate(gorgon: list) -> str:
+    def _calculate(gorgon: List[int]) -> str:
         """Calculate final Gorgon signature."""
         result = ""
         for item in Gorgon._handle(Gorgon._initialize(gorgon, Gorgon._encryption())):
@@ -93,7 +95,7 @@ class Gorgon:
             Gorgon._hex2string(Gorgon.HEX_STR[6]),
             result,
         )
-    
+
     @staticmethod
     def encrypt(
         params: Union[str, Dict],

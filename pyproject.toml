@@ -34,7 +34,6 @@ classifiers = [
 ]
 dependencies = [
     "pycryptodome>=3.23.0",
-    "twine>=6.2.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +42,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.0",
     "mypy>=1.19.0",
+    "twine>=6.2.0",
 ]
 
 [project.urls]
@@ -70,7 +70,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-ignore = ["E501"]
+ignore = ["E501", "W293"]
 
 [tool.mypy]
 python_version = "3.10"

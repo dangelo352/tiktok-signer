@@ -3,8 +3,8 @@ from typing import List, Union
 
 
 class SM3:
-    """SM3 hash algorithm implementation (Chinese national standard GB/T 32905-2016)."""
-    
+    """SM3 hash algorithm (Chinese national standard GB/T 32905-2016)."""
+
     IV: List[int] = [
         1937774191, 1226093241, 388252375, 3666478592,
         2842636476, 372324522, 3817729613, 2969243214
@@ -27,36 +27,32 @@ class SM3:
         2055708042, 2055708042, 2055708042, 2055708042,
         2055708042, 2055708042, 2055708042, 2055708042
     ]
-    
-    def __init__(self) -> None:
-        """Initialize SM3 hash instance."""
-        pass
-    
+
     def _rotate_left(self, a: int, k: int) -> int:
         """Rotate 32-bit integer left by k positions."""
         k = k % 32
         return ((a << k) & 0xFFFFFFFF) | ((a & 0xFFFFFFFF) >> (32 - k))
-    
+
     def _ffj(self, x: int, y: int, z: int, j: int) -> int:
         """FF function for SM3 compression."""
         if 0 <= j < 16:
             return x ^ y ^ z
         return (x & y) | (x & z) | (y & z)
-    
+
     def _ggj(self, x: int, y: int, z: int, j: int) -> int:
         """GG function for SM3 compression."""
         if 0 <= j < 16:
             return x ^ y ^ z
         return (x & y) | ((~x) & z)
-    
+
     def _p0(self, x: int) -> int:
         """P0 permutation function."""
         return x ^ self._rotate_left(x, 9) ^ self._rotate_left(x, 17)
-    
+
     def _p1(self, x: int) -> int:
         """P1 permutation function."""
         return x ^ self._rotate_left(x, 15) ^ self._rotate_left(x, 23)
-    
+
     def _cf(self, v_i: List[int], b_i: bytearray) -> List[int]:
         """Compression function for one 512-bit block."""
         w = []
@@ -104,15 +100,15 @@ class SM3:
             g & 0xFFFFFFFF ^ v_i[6],
             h & 0xFFFFFFFF ^ v_i[7],
         ]
-    
-    def encrypt(self, msg: Union[bytes, bytearray]) -> bytes:
-        """Compute SM3 hash of message.
-        
+
+    def digest(self, msg: Union[bytes, bytearray]) -> bytes:
+        """Compute the 32-byte SM3 digest of a message.
+
         Args:
-            msg: Message to hash as bytes or bytearray.
-        
+            msg: Message to hash.
+
         Returns:
-            32-byte hash digest.
+            The 32-byte SM3 digest.
         """
         msg = bytearray(msg)
         len1 = len(msg)

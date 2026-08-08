@@ -1,48 +1,48 @@
 """Ladon encryption module for X-Ladon header generation."""
-from typing import Dict, Optional, Union
-from os import urandom
 import base64
 import ctypes
 import hashlib
 import time
+from os import urandom
+from typing import Dict, Optional, Union
 
 
 class Ladon:
     """Ladon encryption class for generating X-Ladon authentication headers."""
-    
+
     @staticmethod
     def _md5bytes(data: bytes) -> str:
         """Generate MD5 hex digest from bytes."""
         return hashlib.md5(data).hexdigest()
-    
+
     @staticmethod
     def _padding_size(size: int, block_size: int = 16) -> int:
         """Calculate padded size for block alignment."""
         return ((size + block_size - 1) // block_size) * block_size
-    
+
     @staticmethod
     def _pkcs7_pad(buffer: bytearray, data_size: int, padded_size: int, block_size: int) -> None:
         """Apply PKCS7 padding to buffer."""
         padding_value = padded_size - data_size
         for i in range(data_size, padded_size):
             buffer[i] = padding_value
-    
+
     @staticmethod
     def _validate(num: int) -> int:
         """Mask integer to 64-bit unsigned."""
         return num & 0xFFFFFFFFFFFFFFFF
-    
+
     @staticmethod
     def _ror(value: ctypes.c_ulonglong, count: int) -> int:
         """Rotate right operation for 64-bit value."""
         nbits = ctypes.sizeof(value) * 8
         count %= nbits
         low = ctypes.c_ulonglong(value.value << (nbits - count)).value
-        value = ctypes.c_ulonglong(value.value >> count).value
-        return value or low
-    
+        shifted = ctypes.c_ulonglong(value.value >> count).value
+        return shifted or low
+
     @staticmethod
-    def _encrypt_ladon_input(hash_table: bytes, input_data: bytes) -> bytes:
+    def _encrypt_ladon_input(hash_table: Union[bytes, bytearray], input_data: Union[bytes, bytearray]) -> bytes:
         """Encrypt 16-byte input block using Ladon algorithm."""
         data0 = int.from_bytes(input_data[:8], byteorder="little")
         data1 = int.from_bytes(input_data[8:], byteorder="little")
@@ -54,7 +54,7 @@ class Ladon:
         output_data[:8] = data0.to_bytes(8, byteorder="little")
         output_data[8:] = data1.to_bytes(8, byteorder="little")
         return bytes(output_data)
-    
+
     @staticmethod
     def _encrypt_ladon(md5hex: bytes, data: bytes, size: int) -> bytearray:
         """Core Ladon encryption routine."""
@@ -89,7 +89,7 @@ class Ladon:
                 hash_table, input_buf[i * 16 : (i + 1) * 16]
             )
         return output
-    
+
     @staticmethod
     def encrypt(
         aid: Union[int, str] = 1233,

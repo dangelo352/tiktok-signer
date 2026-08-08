@@ -1,16 +1,16 @@
 """Protocol Buffer encoding/decoding utilities for TikTok API."""
 from enum import IntEnum, unique
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 
 class ProtoError(Exception):
     """Exception raised for Protocol Buffer errors."""
-    
+
     def __init__(self, msg: str) -> None:
         self.msg = msg
-    
+
     def __str__(self) -> str:
-        return repr(self.msg)
+        return self.msg
 
 
 @unique
@@ -28,12 +28,12 @@ class ProtoFieldType(IntEnum):
 
 class ProtoField:
     """Single Protocol Buffer field."""
-    
+
     def __init__(self, idx: int, field_type: ProtoFieldType, val: Any) -> None:
         self.idx = idx
         self.type = field_type
         self.val = val
-    
+
     def is_ascii_str(self) -> bool:
         """Check if value is printable ASCII string."""
         if not isinstance(self.val, bytes):
@@ -42,7 +42,7 @@ class ProtoField:
             if b < 0x20 or b > 0x7e:
                 return False
         return True
-    
+
     def __str__(self) -> str:
         if self.type in (ProtoFieldType.INT32, ProtoFieldType.INT64, ProtoFieldType.VARINT):
             return f"{self.idx}({self.type.name}): {self.val}"
@@ -55,53 +55,51 @@ class ProtoField:
 
 class ProtoReader:
     """Protocol Buffer binary reader."""
-    
+
     def __init__(self, data: bytes) -> None:
         self.data = data
         self.pos = 0
-    
+
     def seek(self, pos: int) -> None:
         """Move read position."""
         self.pos = pos
-    
+
     def is_remain(self, length: int) -> bool:
         """Check if enough bytes remain."""
         return self.pos + length <= len(self.data)
-    
+
     def read0(self) -> int:
         """Read single byte."""
         assert self.is_remain(1)
         ret = self.data[self.pos]
         self.pos += 1
         return ret & 0xFF
-    
+
     def read(self, length: int) -> bytes:
         """Read multiple bytes."""
         assert self.is_remain(length)
         ret = self.data[self.pos:self.pos + length]
         self.pos += length
         return ret
-    
+
     def read_int32(self) -> int:
         """Read 32-bit little-endian integer."""
         return int.from_bytes(self.read(4), byteorder="little", signed=False)
-    
+
     def read_int64(self) -> int:
         """Read 64-bit little-endian integer."""
         return int.from_bytes(self.read(8), byteorder="little", signed=False)
-    
+
     def read_varint(self) -> int:
-        """Read variable-length integer."""
+        """Read variable-length integer (max 64 bits)."""
         vint = 0
-        n = 0
-        while True:
+        for n in range(10):
             byte = self.read0()
             vint |= (byte & 0x7F) << (7 * n)
             if byte < 0x80:
-                break
-            n += 1
-        return vint
-    
+                return vint
+        raise ProtoError("varint exceeds 64 bits")
+
     def read_string(self) -> bytes:
         """Read length-prefixed string."""
         length = self.read_varint()
@@ -110,39 +108,39 @@ class ProtoReader:
 
 class ProtoWriter:
     """Protocol Buffer binary writer."""
-    
+
     def __init__(self) -> None:
         self.data = bytearray()
-    
+
     def write0(self, byte: int) -> None:
         """Write single byte."""
         self.data.append(byte & 0xFF)
-    
+
     def write(self, data: bytes) -> None:
         """Write multiple bytes."""
         self.data.extend(data)
-    
+
     def write_int32(self, int32: int) -> None:
         """Write 32-bit little-endian integer."""
         self.write(int32.to_bytes(4, byteorder="little", signed=False))
-    
+
     def write_int64(self, int64: int) -> None:
         """Write 64-bit little-endian integer."""
         self.write(int64.to_bytes(8, byteorder="little", signed=False))
-    
+
     def write_varint(self, vint: int) -> None:
-        """Write variable-length integer."""
+        """Write variable-length integer (64-bit)."""
         vint = vint & 0xFFFFFFFFFFFFFFFF
-        while vint > 0x80:
+        while vint >= 0x80:
             self.write0((vint & 0x7F) | 0x80)
             vint >>= 7
         self.write0(vint & 0x7F)
-    
+
     def write_string(self, data: bytes) -> None:
         """Write length-prefixed string."""
         self.write_varint(len(data))
         self.write(data)
-    
+
     def to_bytes(self) -> bytes:
         """Get written bytes."""
         return bytes(self.data)
@@ -150,7 +148,7 @@ class ProtoWriter:
 
 class ProtoBuf:
     """Protocol Buffer message encoder/decoder."""
-    
+
     def __init__(self, data: Optional[Union[bytes, Dict]] = None) -> None:
         """Initialize ProtoBuf from bytes or dict.
         
@@ -169,21 +167,19 @@ class ProtoBuf:
             self._parse_dict(data)
         elif not isinstance(data, (bytes, dict)):
             raise ProtoError(f"unsupport type({type(data)}) to protobuf")
-    
+
     def __getitem__(self, idx: int) -> Any:
         pf = self.get(int(idx))
         if pf is None:
             return None
         if pf.type != ProtoFieldType.STRING:
             return pf.val
-        if not isinstance(idx, int):
-            return pf.val
         if pf.val is None:
             return None
         if pf.is_ascii_str():
             return pf.val.decode("utf-8")
         return ProtoBuf(pf.val)
-    
+
     def _parse_buf(self, data: bytes) -> None:
         """Parse protobuf binary data."""
         reader = ProtoReader(data)
@@ -203,7 +199,7 @@ class ProtoBuf:
                 self.put(ProtoField(field_idx, field_type, reader.read_string()))
             else:
                 raise ProtoError(f"parse protobuf error, unexpected field type: {field_type.name}")
-    
+
     def toBuf(self) -> bytes:
         """Encode to protobuf binary format."""
         writer = ProtoWriter()
@@ -221,23 +217,23 @@ class ProtoBuf:
             else:
                 raise ProtoError(f"encode to protobuf error, unexpected field type: {field.type.name}")
         return writer.to_bytes()
-    
+
     def dump(self) -> None:
         """Print all fields for debugging."""
         for field in self.fields:
             print(field)
-    
+
     def get_list(self, idx: int) -> List[ProtoField]:
         """Get all fields with given index."""
         return [field for field in self.fields if field.idx == idx]
-    
+
     def get(self, idx: int) -> Optional[ProtoField]:
         """Get first field with given index."""
         for field in self.fields:
             if field.idx == idx:
                 return field
         return None
-    
+
     def get_int(self, idx: int, default: int = 0) -> int:
         """Get integer field value.
         
@@ -252,9 +248,9 @@ class ProtoBuf:
         if pf is None:
             return default
         if pf.type in (ProtoFieldType.INT32, ProtoFieldType.INT64, ProtoFieldType.VARINT):
-            return pf.val
+            return cast(int, pf.val)
         raise ProtoError(f"getInt({idx}) -> {pf.type}")
-    
+
     def get_bytes(self, idx: int, default: Optional[bytes] = None) -> Optional[bytes]:
         """Get bytes field value.
         
@@ -269,9 +265,9 @@ class ProtoBuf:
         if pf is None:
             return default
         if pf.type == ProtoFieldType.STRING:
-            return pf.val
+            return cast(bytes, pf.val)
         raise ProtoError(f"getBytes({idx}) -> {pf.type}")
-    
+
     def get_utf8(self, idx: int, default: Optional[str] = None) -> Optional[str]:
         """Get UTF-8 string field value.
         
@@ -286,7 +282,7 @@ class ProtoBuf:
         if bs is None:
             return default
         return bs.decode("utf-8")
-    
+
     def get_protobuf(self, idx: int, default: Optional["ProtoBuf"] = None) -> Optional["ProtoBuf"]:
         """Get nested ProtoBuf field value.
         
@@ -301,35 +297,35 @@ class ProtoBuf:
         if bs is None:
             return default
         return ProtoBuf(bs)
-    
+
     def put(self, field: ProtoField) -> None:
         """Add field to message."""
         self.fields.append(field)
-    
+
     def put_int32(self, idx: int, int32: int) -> None:
         """Add INT32 field."""
         self.put(ProtoField(idx, ProtoFieldType.INT32, int32))
-    
+
     def put_int64(self, idx: int, int64: int) -> None:
         """Add INT64 field."""
         self.put(ProtoField(idx, ProtoFieldType.INT64, int64))
-    
+
     def put_varint(self, idx: int, vint: int) -> None:
         """Add VARINT field."""
         self.put(ProtoField(idx, ProtoFieldType.VARINT, vint))
-    
+
     def put_bytes(self, idx: int, data: bytes) -> None:
         """Add bytes field."""
         self.put(ProtoField(idx, ProtoFieldType.STRING, data))
-    
+
     def put_utf8(self, idx: int, data: str) -> None:
         """Add UTF-8 string field."""
         self.put(ProtoField(idx, ProtoFieldType.STRING, data.encode("utf-8")))
-    
+
     def put_protobuf(self, idx: int, data: "ProtoBuf") -> None:
         """Add nested ProtoBuf field."""
         self.put(ProtoField(idx, ProtoFieldType.STRING, data.toBuf()))
-    
+
     def _parse_dict(self, data: Dict) -> None:
         """Parse dict to protobuf fields."""
         for k, v in data.items():
@@ -343,7 +339,7 @@ class ProtoBuf:
                 self.put_protobuf(k, ProtoBuf(v))
             else:
                 raise ProtoError(f"unsupport type({type(v)}) to protobuf")
-    
+
     def to_dict(self, out: Dict) -> Dict:
         """Convert to dict using template.
         
@@ -389,7 +385,7 @@ def protobuf_decode(data: Union[bytes, ProtoBuf]) -> Dict:
     Returns:
         dict: protobuf data
     """
-    out = {}
+    out: Dict[int, Any] = {}
     if not isinstance(data, ProtoBuf):
         data = ProtoBuf(data=data)
     for f in data.fields:

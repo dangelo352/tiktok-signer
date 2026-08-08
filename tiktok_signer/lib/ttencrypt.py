@@ -1,91 +1,98 @@
-import os
+"""TTEncrypt payload cipher used by TikTok device registration."""
 import gzip
 import json
 import random
-import binascii
-
 from pathlib import Path
-from Crypto.Cipher import AES
-from functools import lru_cache
+from typing import Dict, List
 
-@lru_cache(maxsize=1)
-def _load_dword():
-    filename = "dword.json"
-    filepath = Path(__file__).parent / "data" / filename
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(filename)
-    with open(filepath, "r") as f:
-        return json.load(f)
+from Crypto.Cipher import AES
+
+_TABLES_PATH = Path(__file__).parent / "data" / "dword.json"
+
+
+def _load_tables() -> Dict[str, List[int]]:
+    """Load the dword lookup tables shipped with the package."""
+    with open(_TABLES_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)  # type: ignore[no-any-return]
+
+
+_TABLES: Dict[str, List[int]] = _load_tables()
 
 
 class TTEncrypt:
+    """TTEncrypt payload cipher.
 
-    __content = []
-    __content_raw = []
+    Each instance keeps its own cipher state, so concurrent users of separate
+    instances never interfere with each other.
+    """
 
-    CF = 0
-    begining = [0x74, 0x63, 0x05, 0x10, 0, 0]
-    list_9C8 = []
+    BEGINNING: List[int] = [0x74, 0x63, 0x05, 0x10, 0, 0]
 
-    @property
-    def dword_0(self):
-        return _load_dword()["dword_0"]
-
-    @property
-    def dword_1(self):
-        return _load_dword()["dword_1"]
+    def __init__(self) -> None:
+        self._content: List[int] = []
+        self._content_raw: List[int] = []
+        self._key_stream: List[int] = []
+        self._carry_flag: int = 0
 
     @property
-    def dword_2(self):
-        return _load_dword()["dword_2"]
+    def dword_0(self) -> List[int]:
+        return _TABLES["dword_0"]
 
     @property
-    def dword_3(self):
-        return _load_dword()["dword_3"]
+    def dword_1(self) -> List[int]:
+        return _TABLES["dword_1"]
 
     @property
-    def dword_4(self):
-        return _load_dword()["dword_4"]
+    def dword_2(self) -> List[int]:
+        return _TABLES["dword_2"]
 
     @property
-    def dword_5(self):
-        return _load_dword()["dword_5"]
+    def dword_3(self) -> List[int]:
+        return _TABLES["dword_3"]
 
     @property
-    def dword_6(self):
-        return _load_dword()["dword_6"]
+    def dword_4(self) -> List[int]:
+        return _TABLES["dword_4"]
 
     @property
-    def dword_7(self):
-        return _load_dword()["dword_7"]
+    def dword_5(self) -> List[int]:
+        return _TABLES["dword_5"]
 
     @property
-    def dword_8(self):
-        return _load_dword()["dword_8"]
+    def dword_6(self) -> List[int]:
+        return _TABLES["dword_6"]
 
     @property
-    def dword_9(self):
-        return _load_dword()["dword_9"]
+    def dword_7(self) -> List[int]:
+        return _TABLES["dword_7"]
 
     @property
-    def LIST_6B0(self):
-        return _load_dword()["LIST_6B0"]
+    def dword_8(self) -> List[int]:
+        return _TABLES["dword_8"]
 
     @property
-    def ord_list(self):
-        return _load_dword()["ord_list"]
+    def dword_9(self) -> List[int]:
+        return _TABLES["dword_9"]
 
     @property
-    def rodata(self):
-        return _load_dword()["rodata"]
+    def LIST_6B0(self) -> List[int]:
+        return _TABLES["LIST_6B0"]
 
-    def encrypt(self, data):
+    @property
+    def ord_list(self) -> List[int]:
+        return _TABLES["ord_list"]
+
+    @property
+    def rodata(self) -> List[int]:
+        return _TABLES["rodata"]
+
+    def encrypt(self, data: bytes) -> bytes:
         headers = [31, 139, 8, 0, 0, 0, 0, 0, 0, 0]
-        data = list(data)
-        self.setData(data)
+        payload = list(data)
+        self._set_data(payload)
         for i in range(len(headers)):
-            self.__content[i] = headers[i]
-        list_0B0 = self.calculate(self.list_9C8) + self.ord_list
+            self._content[i] = headers[i]
+        list_0B0 = self.calculate(self._key_stream) + self.ord_list
         list_5D8 = self.calculate(list_0B0)
         list_378 = []
         list_740 = []
@@ -94,26 +101,24 @@ class TTEncrypt:
         list_378Array = self.dump_list(list_378)
         for i in range(0x10, 0x20):
             list_740.append(list_5D8[i])
-        list_8D8 = self.calculate(self.__content)
-        list_AB0 = list_8D8 + self.__content
-        list_AB0List = self.convertLongList(list_AB0)
+        list_8D8 = self.calculate(self._content)
+        list_AB0 = list_8D8 + self._content
         differ = 0x10 - len(list_AB0) % 0x10
-        for i in range(differ):
-            list_AB0List.append(differ)
-        list_AB0 = list_AB0List
+        for _ in range(differ):
+            list_AB0.append(differ)
         list_55C = self.hex_CF8(list_378Array)
         final_list = self.hex_0A2(list_AB0, list_740, list_55C)
-        final_list = (self.begining + self.list_9C8) + final_list
+        final_list = (self.BEGINNING + self._key_stream) + final_list
         final_list = self.changeLongArrayTobytes(final_list)
         return bytes(i % 256 for i in final_list)
 
-    def decrypt(self, data):
-        data = list(data)
-        self.setData(data)
-        self.__content = self.__content_raw[38:]
-        self.list_9C8 = self.__content_raw[6:38]
-        self.__content = self.changeByteArrayToLong(self.__content)
-        list_0B0 = self.calculate(self.list_9C8) + self.ord_list
+    def decrypt(self, data: bytes) -> str:
+        payload = list(data)
+        self._set_data(payload)
+        self._content = self._content_raw[38:]
+        self._key_stream = self._content_raw[6:38]
+        self._content = self.changeByteArrayToLong(self._content)
+        list_0B0 = self.calculate(self._key_stream) + self.ord_list
         list_5D8 = self.calculate(list_0B0)
         list_378 = []
         list_740 = []
@@ -123,12 +128,11 @@ class TTEncrypt:
         for i in range(0x10, 0x20):
             list_740.append(list_5D8[i])
         key_longs = self.hex_list(list_378Array)
-        decrypted = self.aes_decrypt(bytes(key_longs), bytes(self.__content))
+        decrypted = self.aes_decrypt(bytes(key_longs), bytes(self._content))
         decryptedByteArray = ([0] * 16) + list(decrypted)
         toDecompress = decryptedByteArray[64:]
         result = gzip.decompress(bytes(toDecompress))
-        res = bytes(result).decode()
-        return res
+        return bytes(result).decode()
 
     def aes_decrypt(self, secretKey, encoded):
         initVector = encoded[0:16]
@@ -136,12 +140,6 @@ class TTEncrypt:
         decryptor = AES.new(secretKey, AES.MODE_CBC, initVector)
         decoded = decryptor.decrypt(data)
         return decoded[: -decoded[-1]]
-
-    def bytearray_decode(self, arrays):
-        out = []
-        for d in arrays:
-            out.append(chr(d))
-        return "".join(out)
 
     def changeLongArrayTobytes(self, array):
         result = []
@@ -394,7 +392,6 @@ class TTEncrypt:
             for j in range(16):
                 tmp_list.append(0)
         tmp_list_size = len(tmp_list)
-        d = tmp_list_size // 0x80
         for i in range(tmp_list_size // 0x80):
             if (tmp_list_size // 128 - 1) == i:
                 ending = self.handle_ending(hex_6A8, divisible)
@@ -415,14 +412,6 @@ class TTEncrypt:
             hex_6A8 += 0x400
         list_8D8 = self.hex_C52(list_6B0)
         return list_8D8
-
-    def convertLongList(self, content):
-        if len(content) == 0:
-            return []
-        result = []
-        for i in content:
-            result.append(i)
-        return result
 
     def dump_list(self, content):
         size = len(content)
@@ -542,7 +531,6 @@ class TTEncrypt:
             r2 = self.parseLong(num_str[2 : length - 8], 10, 16)
         r1 = self.ADDS(r1, r0 << 3)
         r2 = self.ADC(r2, r0 >> 29)
-        a = self.hex_list([r2, r1])
         return self.hex_list([r2, r1])
 
     def UTFX(self, num):
@@ -1330,9 +1318,9 @@ class TTEncrypt:
     def ADDS(self, a, b):
         c = self.check(a) + self.check(b)
         if len(self.toHex(c)) > 8:
-            self.CF = 1
+            self._carry_flag = 1
         else:
-            self.CF = 0
+            self._carry_flag = 0
         result = self.check(c)
         return result
 
@@ -1344,26 +1332,25 @@ class TTEncrypt:
 
     def ADC(self, a, b):
         c = self.check(a) + self.check(b)
-        d = self.check(c + self.CF)  # type: ignore
-        return d
+        return self.check(c + self._carry_flag)
 
     def ADCS(self, a, b):
         c = self.check(a) + self.check(b)
-        d = self.check(c + self.CF)  # type: ignore
+        d = self.check(c + self._carry_flag)
         if len(self.toHex(c)) > 8:
-            self.CF = 1
+            self._carry_flag = 1
         else:
-            self.CF = 0
+            self._carry_flag = 0
         return d
 
     def LSLS(self, num, k):
         result = self.bin_type(num)
-        self.CF = result[k - 1]
+        self._carry_flag = result[k - 1]
         return self.check(self.check(num) << k)
 
     def LSRS(self, num, k):
         result = self.bin_type(num)
-        self.CF = result[len(result) - k]
+        self._carry_flag = result[len(result) - k]
         return self.check(self.check(num) >> k)
 
     def ORRS(self, a, b):
@@ -1372,7 +1359,7 @@ class TTEncrypt:
     def RRX(self, num):
         result = self.bin_type(num)
         lenght = len(result)
-        s = str(self.CF) + result[: lenght - 1 - 0]
+        s = str(self._carry_flag) + result[: lenght - 1 - 0]
         return self.parseLong(s, 10, 2)
 
     def bin_type(self, num):
@@ -1395,33 +1382,19 @@ class TTEncrypt:
         end = start - lsb
         return int(self.parseLong(tmp_string[start : end - start], 10, 2))
 
-    def UFTX(self, num):
-        tmp_string = self.toBinaryString(num)
-        start = len(tmp_string) - 8
-        return self.parseLong(tmp_string[start:], 10, 2)
-
     def toBinaryString(self, num):
         return "{0:b}".format(num)
 
-    def setData(self, data):
-        self.__content_raw = data
-        self.__content = data
-        self.list_9C8 = self.hex_9C8()
+    def _set_data(self, data):
+        self._content_raw = data
+        self._content = data
+        self._key_stream = self.hex_9C8()
 
     def hex_9C8(self):
         result = []
         for i in range(32):
-            result.append(self.choice(0, 0x100))
+            result.append(random.randrange(0x100))
         return result
-
-    def choice(self, start, end):
-        return int(random.uniform(0, 1) * (end + 1 - start) + start)
-
-    def s2b(self, data):
-        arr = []
-        for i in range(len(data)):
-            arr.append(data[i])
-        return arr
 
     def hex_list(self, content):
         result = []
@@ -1447,12 +1420,9 @@ class TTEncrypt:
         else:
             return self.parseLong(n // to_base, to_base) + alphabet[n % to_base]
 
-    def byteArray2str(self, b):
-        return binascii.hexlify(bytes(b)).decode()
-
-    def changeByteArrayToLong(self, bytes):
+    def changeByteArrayToLong(self, data):
         result = []
-        for byte in bytes:
+        for byte in data:
             if byte < 0:
                 result.append(byte + 256)
             else:

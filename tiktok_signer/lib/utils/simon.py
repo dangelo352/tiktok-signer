@@ -1,31 +1,31 @@
 """Simon block cipher implementation for TikTok encryption."""
-from typing import List
 from ctypes import c_ulonglong
+from typing import List
 
 
 class Simon:
     """Simon 128/256 block cipher implementation."""
-    
+
     CONSTANT: int = 0x3DC94C3A046D678B
     ROUNDS: int = 72
-    
+
     @staticmethod
     def get_bit(val: int, pos: int) -> int:
         """Extract bit at position from value."""
         return 1 if val & (1 << pos) else 0
-    
+
     @staticmethod
     def rotate_left(v: int, n: int) -> int:
         """Rotate 64-bit value left by n positions."""
         r = (v << n) | (v >> (64 - n))
         return r & 0xffffffffffffffff
-    
+
     @staticmethod
     def rotate_right(v: int, n: int) -> int:
         """Rotate 64-bit value right by n positions."""
         r = (v << (64 - n)) | (v >> n)
         return r & 0xffffffffffffffff
-    
+
     @staticmethod
     def key_expansion(key: List[int]) -> List[int]:
         """Expand 256-bit key to 72 round keys."""
@@ -36,7 +36,7 @@ class Simon:
             tmp = tmp ^ Simon.rotate_right(tmp, 1)
             key[i] = c_ulonglong(~key[i - 4]).value ^ tmp ^ Simon.get_bit(Simon.CONSTANT, (i - 4) % 62) ^ 3
         return key
-    
+
     @staticmethod
     def decrypt(ct: List[int], k: List[int], c: int = 0) -> List[int]:
         """Decrypt ciphertext block using Simon cipher.
@@ -66,7 +66,7 @@ class Simon:
             x_i = x_i1 ^ f ^ Simon.rotate_left(x_i, 2) ^ key[i]
             x_i1 = tmp
         return [x_i, x_i1]
-    
+
     @staticmethod
     def encrypt(pt: List[int], k: List[int], c: int = 0) -> List[int]:
         """Encrypt plaintext block using Simon cipher.
