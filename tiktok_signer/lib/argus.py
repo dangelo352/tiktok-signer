@@ -1,14 +1,17 @@
 """Argus encryption module for X-Argus header generation."""
+from base64 import b64encode
+from hashlib import md5
+from random import randint
+from struct import unpack
+from time import time
 from typing import Dict, Optional, Union
 from urllib.parse import parse_qs, urlencode
-from hashlib import md5
-from struct import unpack
-from random import randint
-from base64 import b64encode
-from time import time
 from uuid import uuid4
-from Crypto.Util.Padding import pad
+
 from Crypto.Cipher.AES import MODE_CBC, block_size, new
+from Crypto.Util.Padding import pad
+
+from tiktok_signer.lib.stub import generate_stub
 from tiktok_signer.lib.utils.protobuf import ProtoBuf
 from tiktok_signer.lib.utils.simon import Simon
 from tiktok_signer.lib.utils.sm3 import SM3
@@ -16,20 +19,10 @@ from tiktok_signer.lib.utils.sm3 import SM3
 
 class Argus:
     """Argus encryption class for generating X-Argus authentication headers."""
-    
+
     _simon = Simon()
     _sm3 = SM3()
 
-    DEFAULT_AID: int = 1233
-    DEFAULT_LC_ID: int = 2142840551
-    DEFAULT_SDK_VER: str = "v05.01.02-alpha.7-ov-android"
-    DEFAULT_SDK_VER_CODE: int = 83952160
-    DEFAULT_APP_VER: str = "37.0.4"
-    DEFAULT_VERSION_CODE: int = 2023700040
-    DEFAULT_CHANNEL: str = "googleplay"
-    DEFAULT_DEVICE_TYPE = "unknown"
-    DEFAULT_OS_VERSION: str = "9"
-    
     @staticmethod
     def _encrypt_enc_pb(data: bytes, length: int) -> bytes:
         """Encrypt protobuf data with XOR pattern."""
@@ -38,21 +31,21 @@ class Argus:
         for i in range(8, length):
             data_list[i] ^= xor_array[i % 8]
         return bytes(data_list[::-1])
-    
+
     @staticmethod
     def _get_bodyhash(stub: Optional[str] = None) -> bytes:
         """Generate body hash from stub using SM3."""
         if stub is None or len(stub) == 0:
-            return Argus._sm3.encrypt(bytes(16))[0:6]
-        return Argus._sm3.encrypt(bytes.fromhex(stub))[0:6]
-    
+            return Argus._sm3.digest(bytes(16))[0:6]
+        return Argus._sm3.digest(bytes.fromhex(stub))[0:6]
+
     @staticmethod
     def _get_queryhash(query: str) -> bytes:
         """Generate query hash using SM3."""
         if query is None or len(query) == 0:
-            return Argus._sm3.encrypt(bytes(16))[0:6]
-        return Argus._sm3.encrypt(query.encode())[0:6]
-    
+            return Argus._sm3.digest(bytes(16))[0:6]
+        return Argus._sm3.digest(query.encode())[0:6]
+
     @staticmethod
     def _calculate_xargus(xargus_bean: dict) -> str:
         """Calculate X-Argus signature from bean data."""
@@ -74,7 +67,7 @@ class Argus:
         b_buffer = b"\xa6n\xad\x9fw\x01\xd0\x0c\x18" + b_buffer + b"ao"
         cipher = new(md5(sign_key[:16]).digest(), MODE_CBC, md5(sign_key[16:]).digest())
         return b64encode(b"\xf2\x81" + cipher.encrypt(pad(b_buffer, block_size))).decode("utf-8")
-    
+
     @staticmethod
     def _calculate_app_version(version_name: str) -> int:
         """Calculate app version hash from version string.
@@ -96,7 +89,7 @@ class Argus:
             ).zfill(8)
         )
         return int.from_bytes(app_version_hash, byteorder="big") << 1
-    
+
     @staticmethod
     def encrypt(
         params: Union[str, Dict],
@@ -109,6 +102,9 @@ class Argus:
         sdk_ver_code: Union[str, int] = 83952160,
         version_name: str = "37.0.4",
         version_code: Union[str, int] = 2023700040,
+        device_type: str = "unknown",
+        os_version: str = "9",
+        channel: str = "googleplay",
     ) -> Dict[str, str]:
         """Generate X-Argus header for TikTok API authentication.
         
@@ -123,6 +119,9 @@ class Argus:
             sdk_ver_code (str | int): SDK version code.
             version_name (str): App version name (e.g., "37.0.4").
             version_code (str | int): App version code (e.g., 2023700040).
+            device_type (str): Device model (e.g., "SM-G973F").
+            os_version (str): OS version (e.g., "9").
+            channel (str): App distribution channel (e.g., "googleplay").
         
         Returns:
             dict: 'x-argus' header value.
@@ -137,16 +136,12 @@ class Argus:
         else:
             params_str = str(params)
         params_dict = parse_qs(params_str)
-        channel = params_dict.get("channel", [Argus.DEFAULT_CHANNEL])[0]
-        device_id = params_dict.get("device_id", uuid4().hex[:16])[0]
-        device_type = params_dict.get("device_type", [Argus.DEFAULT_DEVICE_TYPE])[0]
-        os_version = params_dict.get("os_version", [Argus.DEFAULT_OS_VERSION])[0]
+        channel = params_dict.get("channel", [channel])[0]
+        device_id = params_dict.get("device_id", device_id or uuid4().hex[:16])[0]
+        device_type = params_dict.get("device_type", [device_type])[0]
+        os_version = params_dict.get("os_version", [os_version])[0]
         version_name = params_dict.get("version_name", [version_name])[0]
-        stub = None
-        if data is not None:
-            from tiktok_signer.lib.stub import generate_stub
-            stub_hash = generate_stub(data)
-            stub = stub_hash
+        stub = generate_stub(data) if data is not None else None
         xargus_bean = {
             1: 0x20200929 << 1,
             2: 2,

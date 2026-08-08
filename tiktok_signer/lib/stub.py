@@ -1,8 +1,8 @@
 """Stub generation module for TikTok request body hashing."""
-from typing import Dict, Optional, Union
-from urllib.parse import urlencode
 import gzip
 import hashlib
+from typing import Dict, Optional, Union
+from urllib.parse import urlencode
 
 
 def generate_stub(data: Optional[Union[Dict, str, bytes]] = None) -> str:

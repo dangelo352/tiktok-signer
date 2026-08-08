@@ -1,18 +1,100 @@
 """
 TikTok Signer Example
 
+Mirrors a real TikTok Android request captured in ``tiktok-search-all.har``:
+full query parameters, app headers and signed headers for the
+``aweme/v1/search/sug/stream/`` endpoint.
+
 Usage:
     python3 -m tiktok_signer.example
     python3 tiktok_signer/example.py
 """
-import sys
 import json
+import sys
+import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tiktok_signer import TikTokSigner, generate_headers, encrypt, encode, decode, __version__
+from tiktok_signer import DeviceProfile, TikTokSigner, __version__
+
+USER_AGENT = (
+    "com.zhiliaoapp.musically/2023700040 (Linux; U; Android 9; in_ID; "
+    "2203121C; Build/PQ3A.190705.09121607;tt-ok/3.12.13.4-tiktok)"
+)
+
+
+def build_api_params(profile: DeviceProfile, device_id: str, install_id: str) -> dict:
+    """Full query parameter set of a real request (from the HAR capture)."""
+    now = int(time.time() * 1000)
+    return {
+        "device_platform": "android",
+        "os": "android",
+        "ssmix": "a",
+        "_rticket": str(now),
+        "cdid": profile.cdid,
+        "channel": profile.channel,
+        "aid": "1233",
+        "app_name": "musical_ly",
+        "version_code": "370004",
+        "version_name": "37.0.4",
+        "manifest_version_code": "2023700040",
+        "update_version_code": "2023700040",
+        "ab_version": "37.0.4",
+        "resolution": "720*1280",
+        "dpi": "320",
+        "device_type": profile.device_type,
+        "device_brand": "Xiaomi",
+        "language": "id",
+        "os_api": "28",
+        "os_version": profile.os_version,
+        "ac": "wifi",
+        "is_pad": "0",
+        "current_region": "ID",
+        "app_type": "normal",
+        "sys_region": "ID",
+        "last_install_time": str(now // 1000 - 86400),
+        "mcc_mnc": "51000",
+        "timezone_name": "Asia/Bangkok",
+        "carrier_region_v2": "510",
+        "residence": "ID",
+        "app_language": "id",
+        "carrier_region": "ID",
+        "timezone_offset": "25200",
+        "host_abi": "arm64-v8a",
+        "locale": "id-ID",
+        "ac2": "wifi",
+        "uoo": "0",
+        "op_region": "ID",
+        "build_number": "37.0.4",
+        "region": "ID",
+        "ts": str(now // 1000),
+        "iid": install_id,
+        "device_id": device_id,
+        "openudid": profile.openudid,
+    }
+
+
+def build_app_headers(body: bytes) -> dict:
+    """App-level headers (from the HAR capture); signed headers are added by the signer."""
+    return {
+        "user-agent": USER_AGENT,
+        "accept-encoding": "gzip",
+        "rpc-persist-pyxis-policy-v-tnc": "1",
+        "sdk-version": "2",
+        "passport-sdk-version": "6031490",
+        "x-vc-bdturing-sdk-version": "2.3.8.i18n",
+        "x-metasec-event-source": "native",
+        "x-tt-request-tag": "n=0;nr=011;bg=0",
+        "x-tt-pba-enable": "1",
+        "x-tt-dm-status": "login=0;ct=1;rt=7",
+        "x-tt-store-region": "id",
+        "x-tt-store-region-src": "did",
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "content-length": str(len(body)),
+    }
 
 
 def main() -> None:
@@ -20,100 +102,90 @@ def main() -> None:
     print(f"TikTok Signer v{__version__}")
     print("=" * 60)
     print()
-    params = {
-        "aid": "1233",
-        "app_name": "musical_ly",
-        "device_platform": "android",
-        "os_version": "9",
-        "device_type": "2203121C",
-        "device_brand": "Xiaomi",
-        "channel": "googleplay",
-        "language": "id",
-        "region": "ID",
-    }
-    print("[1] Generate Headers")
+
+    print("[1] Device Profile (stable fingerprint)")
     print("-" * 60)
-    print(f"Input params: {json.dumps(params, indent=2)}")
+    profile = DeviceProfile(device_id="1234567890abcdef")
+    TikTokSigner.set_device(profile)
+    print(f"device_id : {profile.device_id}")
+    print(f"openudid  : {profile.openudid}")
+    print(f"cdid      : {profile.cdid}")
+    print(f"to_json   : {profile.to_json()}")
     print()
-    headers = TikTokSigner.generate_headers(params=params)
-    print("Output headers:")
-    for key, value in headers.items():
-        print(f"  {key}: {value}")
-    print()
-    print("[2] Generate Headers with POST Data")
+
+    print("[2] Real-world signed request (per HAR)")
     print("-" * 60)
-    post_data = {"username": "test_user", "password": "test_pass"}
-    print(f"Input data: {json.dumps(post_data)}")
+    device_id = "7671700755837978119"      # from device registration
+    install_id = "7671702915996206855"      # from device registration
+    params = build_api_params(profile, device_id=device_id, install_id=install_id)
+    params_str = urlencode(params)
+    body = "keyword=tiktok&source=search_sug".encode()
+
+    headers = TikTokSigner.generate_headers(params=params_str, data=body, device=profile)
+    headers.update(build_app_headers(body))
+
+    print("query params: " + str(len(params)) + " keys")
+    print("signed headers:")
+    for key in ("x-ss-req-ticket", "x-ss-stub", "x-ladon", "x-khronos", "x-argus", "x-gorgon"):
+        print(f"  {key}: {headers[key][:44]}...")
+    print("app headers:")
+    for key in ("user-agent", "sdk-version", "x-tt-dm-status", "x-tt-store-region"):
+        print(f"  {key}: {headers[key]}")
+    url = "https://search22-normal-c-alisg.tiktokv.com/aweme/v1/search/sug/stream/?" + params_str
+    print("url:", url[:100] + "...")
     print()
-    headers_post = TikTokSigner.generate_headers(
-        params="aid=1233&app_name=musical_ly",
-        data=post_data,
-    )
-    print("Output headers:")
-    for key, value in headers_post.items():
-        print(f"  {key}: {value}")
+
+    print("[3] Stable trace id across requests")
+    print("-" * 60)
+    h1 = TikTokSigner.generate_headers(params=params_str, data=body, device=profile)
+    h2 = TikTokSigner.generate_headers(params=params_str, data=body, device=profile)
+
+    def trace(h):
+        return h["x-tt-trace-id"].split("-")[1][:16]
+
+    print(f"trace-id 1: {trace(h1)}")
+    print(f"trace-id 2: {trace(h2)}")
+    print(f"Consistent: {trace(h1) == trace(h2)}")
     print()
-    print("[3] TTEncrypt")
+
+    print("[4] TTEncrypt (device_register payload)")
     print("-" * 60)
     device_info = {
         "magic_tag": "ss_app_log",
         "header": {
             "display_name": "TikTok",
-            "update_version_code": 2023700040,
-            "manifest_version_code": 2023700040,
-            "app_version_minor": "",
             "aid": 1233,
-            "channel": "googleplay",
+            "channel": profile.channel,
             "package": "com.zhiliaoapp.musically",
             "version_name": "37.0.4",
-            "version_code": 2023700040,
-            "sdk_ver_code": "3.9.17-bugfix.9",
             "os": "Android",
-            "os_version": "9",
-            "os_api": 28,
-            "device_model": "2203121C",
+            "os_version": profile.os_version,
+            "device_model": profile.device_type,
             "device_brand": "Xiaomi",
-            "device_manufacturer": "Xiaomi",
-            "cpu_abi": "arm64-v8a",
-            "release_build": "7e6048c_20231219",
-            "density_dpi": 320,
-            "display_density": "mdpi",
-            "resolution": "720*1280",
+            "openudid": profile.openudid,
+            "clientudid": profile.cdid,
             "language": "id",
-            "timezone": 7,
-            "access": "wifi",
-            "not_request_sender": 0,
-            "rom": "MIUI-V12.5.6.0.QDLMIXM",
-            "rom_version": "miui_V12_V12.5.6.0.QDLMIXM",
-            "sig_hash": "194326e82c84a639a52e5c023116f12a",
-            "google_aid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-            "openudid": "xxxxxxxxxxxxxxxx",
-            "clientudid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
         },
-        "_gen_time": 1706789012345,
+        "_gen_time": int(time.time() * 1000),
     }
     print(f"Input: {json.dumps(device_info)}")
     print()
     encrypted = TikTokSigner.encrypt(device_info)
     print(f"Encrypted: {len(encrypted)} bytes")
-    print(f"Hex preview: {encrypted.hex()}")
+    print(f"Prefix: {encrypted[:6].hex()} (marker 746305100000)")
+    print(f"Roundtrip decrypt: {TikTokSigner.decrypt(encrypted) == json.dumps(device_info, separators=(',', ':'))}")
     print()
-    print("[4] Generate Headers with Custom Unix Timestamp")
+
+    print("[5] Generate Headers with Custom Unix Timestamp")
     print("-" * 60)
-    import time
-    custom_unix = int(time.time()) - 60  # 1 minute ago
-    print(f"Custom unix timestamp: {custom_unix}")
-    print()
-    headers_unix = TikTokSigner.generate_headers(
-        params=params,
-        unix=custom_unix
-    )
-    print("Output headers:")
-    for key, value in headers_unix.items():
-        print(f"  {key}: {value}")
+    custom_unix = int(time.time()) - 60
+    headers_unix = TikTokSigner.generate_headers(params=params_str, unix=custom_unix)
+    print(f"x-ss-req-ticket: {headers_unix['x-ss-req-ticket']}")
+    print(f"x-khronos      : {headers_unix['x-khronos']}")
     print(f"Note: x-khronos should be {custom_unix}")
     print()
-    print("[5] Protobuf Encode/Decode")
+
+    print("[6] Protobuf Encode/Decode")
     print("-" * 60)
     protobuf_data = {
         1: "string_value",
@@ -132,17 +204,7 @@ def main() -> None:
     decoded = TikTokSigner.decode(encoded)
     print(f"Decoded: {decoded}")
     print()
-    print("[6] Shortcut Functions")
-    print("-" * 60)
-    headers_shortcut = generate_headers(params="aid=1233")
-    print(f"generate_headers(): {list(headers_shortcut.keys())}")
-    encrypted_shortcut = encrypt({"test": "data"})
-    print(f"encrypt(): {len(encrypted_shortcut)} bytes")
-    encoded_shortcut = encode({1: "test", 2: 123})
-    print(f"encode(): {len(encoded_shortcut)} bytes")
-    decoded_shortcut = decode(encoded_shortcut)
-    print(f"decode(): {decoded_shortcut}")
-    print()
+
     print("=" * 60)
     print("All examples completed successfully!")
     print("=" * 60)
