@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TikTok One bridge probe</title>
+<style>body{font:16px system-ui;padding:24px;white-space:pre-wrap}button{font:inherit;padding:12px}</style>
+<h1>Bridge probe</h1>
+<button id="inspect">Inspect bridge</button>
+<pre id="output">ready</pre>
+<script>
+  const output = document.querySelector('#output');
+  const names = ['JSBridge', 'JS2NativeBridge', 'ToutiaoJSBridge', 'x'];
+  function describe() {
+    const result = {};
+    for (const name of names) {
+      const value = window[name];
+      result[name] = value ? {
+        type: typeof value,
+        keys: Object.keys(value).sort().slice(0, 100),
+      } : null;
+    }
+    output.textContent = JSON.stringify(result, null, 2);
+  }
+  document.querySelector('#inspect').addEventListener('click', describe);
+  setTimeout(describe, 1_000);
+</script>
