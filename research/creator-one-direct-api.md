@@ -29,6 +29,14 @@ The live US mobile host observed on the device is
 on `https://ads.us.tiktok.com` to an existing TikTok One web session, which is
 useful for a cookie-based replay client.
 
+Live validation also established a token-free operator path: opening an
+allowlisted `https://inapp.tiktokv.com/CreativeOne/...` GET URL through
+TikTok's own `snssdk1233://webview` route lets the installed app attach its
+existing creator session. `tools/creator_one_device_bridge.py` automates that
+path and reads the rendered JSON. ADB is only the local launch/control
+transport; campaign records come from the API response rather than UI scraping.
+No cookie, account token, or signed request header is exported from TikTok.
+
 ## Campaign-management read path
 
 The collaboration stage values embedded in the bundle are:
@@ -126,3 +134,30 @@ python tools/creator_one_readonly.py campaigns \
 `--stages`; it is excluded from the default focused crawl. The tool does not
 include Apply, Join, Accept, Upload, Authorize, Reject, Quit, or any other
 campaign-changing endpoint.
+
+## Logged-in Android bridge
+
+For a connected, already logged-in Android device, the device bridge can call
+the read-only campaign API without supplying or extracting session secrets:
+
+```bash
+python tools/creator_one_device_bridge.py homepage
+python tools/creator_one_device_bridge.py collabs \
+  --param collabStage=3 --param page=1 --param limit=20
+python tools/creator_one_device_bridge.py campaigns \
+  --output /secure/creator-one-api.json
+```
+
+The campaign crawl includes Todo, Pending, In progress, and Done by default.
+Its route and parameter allowlists reject arbitrary URLs and all mutation
+methods. It requires `adb`, `scrcpy`, macOS `pbcopy`/`pbpaste`, and `tesseract`.
+The last dependency locates Android's text-selection action reliably for both
+short and long JSON responses.
+
+In the validated account snapshot, the homepage's `completedCnt` differed from
+the stage-4 list's `pagination.totalCount`. Consumers should preserve both
+metrics and treat the paginated list total as the number of returned Done
+records instead of assuming it equals the homepage badge. Stage lists are not
+necessarily disjoint either: a collaboration can be returned by more than one
+stage query, so deduplicate only within a stage unless the downstream use case
+explicitly wants one record across the whole account.
