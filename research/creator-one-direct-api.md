@@ -108,3 +108,21 @@ python tools/creator_one_readonly.py homepage \
 
 The client rejects unknown parameters, has no arbitrary URL mode, never sends
 POST requests, and does not print the session cookie or error response bodies.
+
+For the on-device creator session, the focused crawl defaults to only the
+queues used operationally: To do, Pending, and Done. It paginates the same
+`CreatorCollabList` route with stage values 1, 2, and 4:
+
+```bash
+python tools/creator_one_readonly.py campaigns \
+  --origin inapp-us \
+  --tt-token-file /secure/x-tt-token.txt \
+  --device-profile /secure/device-profile.json \
+  --signed \
+  --output /secure/campaigns.json
+```
+
+`in-progress` (stage 3) is available only when explicitly requested with
+`--stages`; it is excluded from the default focused crawl. The tool does not
+include Apply, Join, Accept, Upload, Authorize, Reject, Quit, or any other
+campaign-changing endpoint.
