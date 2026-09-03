@@ -75,6 +75,14 @@ Primary read endpoints and inputs:
 
 ## Reproducing the inventory
 
+The definitive human-readable inventory is
+[`creator-one-endpoint-catalog.md`](creator-one-endpoint-catalog.md), with a
+machine-readable twin in
+[`creator-one-endpoint-catalog.json`](creator-one-endpoint-catalog.json). It
+groups all 564 discovered routes by service, explains every action in plain
+English, and records method, input fields, safety class, and live-validation
+status.
+
 Download the current creator-center JavaScript referenced by the TikTok One H5
 page, then run:
 
@@ -89,6 +97,15 @@ wrappers whose HTTP method and input object can be proved—add
 ```bash
 python tools/extract_creator_one_api.py creator-center.js \
   --include-unwrapped --format markdown
+```
+
+To regenerate both definitive catalogs with source provenance:
+
+```bash
+python tools/build_creator_one_catalog.py creator-center.js \
+  --source-url 'https://…/creative/creatormarketplace.HASH.js' \
+  --json-output research/creator-one-endpoint-catalog.json \
+  --markdown-output research/creator-one-endpoint-catalog.md
 ```
 
 The extractor is deliberately static and secret-safe. Live validation still
